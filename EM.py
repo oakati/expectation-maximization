@@ -45,9 +45,12 @@ def EM(X, theta_0, epsilon):
         pdf_k1 = multivariate_normal.pdf(X, mean=mu_1, cov=sigma_1)
         pdf_k2 = multivariate_normal.pdf(X, mean=mu_2, cov=sigma_2)
 
-        # Evaluate responsibilities
-        gama[:, 0] = np.divide( (pi_1 * pdf_k1) , (pi_1 * pdf_k1 + pi_2 * pdf_k2) )
-        gama[:, 1] = np.divide( (pi_2 * pdf_k2) , (pi_1 * pdf_k1 + pi_2 * pdf_k2) )
+        # Evaluate responsibilities with numerical stability
+        denominator = pi_1 * pdf_k1 + pi_2 * pdf_k2
+        # Add small epsilon to prevent division by zero
+        denominator = np.maximum(denominator, 1e-8)
+        gama[:, 0] = np.divide( (pi_1 * pdf_k1) , denominator )
+        gama[:, 1] = np.divide( (pi_2 * pdf_k2) , denominator )
 
         # Re-estimate parameters
         N_1 = gama[:, 0].sum()
@@ -59,18 +62,24 @@ def EM(X, theta_0, epsilon):
         diff = X - mu_1
         weighted_diff = diff * gama[:, 0][:, np.newaxis]
         sigma_1 = (weighted_diff.T @ diff) / N_1
+        # Add regularization to prevent singular matrices
+        sigma_1 += np.eye(sigma_1.shape[0]) * 1e-6
 
         diff = X - mu_2
         weighted_diff = diff * gama[:, 1][:, np.newaxis]
         sigma_2 = (weighted_diff.T @ diff) / N_2
+        # Add regularization to prevent singular matrices
+        sigma_2 += np.eye(sigma_2.shape[0]) * 1e-6
 
         pi_1 = np.divide( N_1 , N )
         pi_2 = 1 - pi_1
 
         # Store the previous log-likelihood
         L_prime = L
-        # Evaluate the new log-likelihood
-        L = calculate_log_likelihood(pi_1, pi_2, pdf_k1, pdf_k2)
+        # Evaluate the new log-likelihood with numerical stability
+        likelihood = pi_1 * pdf_k1 + pi_2 * pdf_k2
+        likelihood = np.maximum(likelihood, 1e-8)  # Prevent log of zero
+        L = np.log(likelihood).sum()
 
         print(f"Current log-likelihood: {L:.4f}")
         print(f"Previous log-likelihood: {L_prime:.4f}")
